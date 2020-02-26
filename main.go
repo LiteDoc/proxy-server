@@ -9,7 +9,6 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/gorilla/mux"
-
 	"github.com/gorilla/sessions"
 	"github.com/rogerwangcs/proxy-server/Cassandra"
 )
@@ -37,22 +36,28 @@ func heartbeat(w http.ResponseWriter, r *http.Request, serverID int) {
 
 // ConnectHandler : start new session
 func ConnectHandler(w http.ResponseWriter, r *http.Request, serverID int, store *sessions.CookieStore) {
+
+	// Get user name
+	q := r.URL.Query()
+	log.Print(q.Get("name"))
+	log.Print(q.Get("client"))
+
+	// Create a new session for user
 	session, err := store.Get(r, "session-name")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Print(session)
 	// Set some session values.
 	session.Values["foo"] = "bar"
 	session.Values[42] = 43
+	log.Print(session.Values)
 	// Save it before we write to the response/return from the handler.
 	err = session.Save(r, w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(session)
 }
 
 // ReadHandler : read
@@ -90,7 +95,18 @@ func serverThread(serverID int, portShift int, wg *sync.WaitGroup) {
 	defer wg.Done() // finish waitgroup after thread returns
 
 	// Initialize Session Store
-	var store = sessions.NewCookieStore([]byte("temp session key"))
+	// authKeyOne := securecookie.GenerateRandomKey(64)
+	// encryptionKeyOne := securecookie.GenerateRandomKey(32)
+	// store := sessions.NewCookieStore(
+	// // authKeyOne,
+	// // encryptionKeyOne,
+	// )
+	store := sessions.NewCookieStore([]byte("temp session key"))
+
+	store.Options = &sessions.Options{
+		MaxAge:   60 * 15,
+		HttpOnly: true,
+	}
 
 	// Initialize Router
 	router := mux.NewRouter().StrictSlash(true)
