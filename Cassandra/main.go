@@ -1,18 +1,25 @@
 package Cassandra
+
 import (
-  "github.com/gocql/gocql"
-  "fmt"
+	"github.com/gocql/gocql"
 )
 
+// Session : Cassandra session
 var Session *gocql.Session
 
 func init() {
-	var err error
-	cluster := gocql.NewCluster("127.0.0.1:9042")
-	cluster.Keyspace = "testspace"
-	Session, err = cluster.CreateSession()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("cassandra init done")
+	// godotenv.Load()
+	// var err error
+
+	// cassServerIP, exists := os.LookupEnv("CASS_SERVER")
+	// if exists {
+	// 	cluster := gocql.NewCluster(cassServerIP)
+	// 	cluster.Keyspace = "testspace"
+	// 	Session, err = cluster.CreateSession()
+	// 	fmt.Println("cassandra init done")
+	// }
+
+	// if err != nil {
+	// 	panic(err)
+	// }
 }

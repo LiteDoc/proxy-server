@@ -1,145 +1,52 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
 
-	"github.com/gocql/gocql"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
-	"github.com/rogerwangcs/proxy-server/Cassandra"
+	"github.com/joho/godotenv"
+	"github.com/rs/cors"
 )
 
-type JSONResponse struct {
-	Status string
-	Code   int
-}
-
-type ClientWriter struct {
-	ID   string
-	Name string
-}
-
-func heartbeat(w http.ResponseWriter, r *http.Request, serverID int) {
-	message := fmt.Sprintf("Proxy Server %d is up and running.", serverID+4000)
-	json.NewEncoder(w).Encode(message)
-	// w.Write([]byte(message))
-}
-
-// type response struct {
-// 	Status string
-// 	res []map[string]interface{}
-// }
-
-// ConnectHandler : start new session
-func ConnectHandler(w http.ResponseWriter, r *http.Request, serverID int, store *sessions.CookieStore) {
-
-	// Get user name
-	q := r.URL.Query()
-	log.Print(q.Get("name"))
-	log.Print(q.Get("client"))
-
-	// Create a new session for user
-	session, err := store.Get(r, "session-name")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	// Set some session values.
-	session.Values["foo"] = "bar"
-	session.Values[42] = 43
-	log.Print(session.Values)
-	// Save it before we write to the response/return from the handler.
-	err = session.Save(r, w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-// ReadHandler : read
-func ReadHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *gocql.Session) {
-	log.Print(fmt.Sprintf("Read on server %d. \n", serverID+4000))
-
-	q := cass.Query(`SELECT * from testtable`)
-	rows, ok := q.Iter().SliceMap()
-	if ok != nil {
-		panic(fmt.Sprintf("%s\n", ok.Error()))
-	}
-	for _, row := range rows {
-		for _, val := range row {
-			fmt.Printf(" %s ", val)
-		}
-		fmt.Printf("\n")
-	}
-
-	json.NewEncoder(w).Encode(rows)
-}
-
-// WriteHandler : write
-func WriteHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *gocql.Session) {
-	log.Print(fmt.Sprintf("Write on server %d. \n", serverID+4000))
-
-	err := cass.Query(`INSERT INTO testtable (id, field0, tag) VALUES (5, 'yes work', '5')`).Exec()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	json.NewEncoder(w).Encode(JSONResponse{Status: "Write Success", Code: 200})
-}
-
-func serverThread(serverID int, portShift int, wg *sync.WaitGroup) {
+func proxyServer(serverID int, wg *sync.WaitGroup) {
 	defer wg.Done() // finish waitgroup after thread returns
 
-	// Initialize Session Store
-	// authKeyOne := securecookie.GenerateRandomKey(64)
-	// encryptionKeyOne := securecookie.GenerateRandomKey(32)
-	// store := sessions.NewCookieStore(
-	// // authKeyOne,
-	// // encryptionKeyOne,
-	// )
-	store := sessions.NewCookieStore([]byte("temp session key"))
+	// Initialize connected user map
+	connectedUsers := make(map[string]string)
 
+	// Initialize cookie store
+	store := sessions.NewCookieStore([]byte("temp session key"))
 	store.Options = &sessions.Options{
-		MaxAge:   60 * 15,
+		Path:     "/",
+		MaxAge:   60 * 60 * 1,
 		HttpOnly: true,
 	}
 
 	// Initialize Router
 	router := mux.NewRouter().StrictSlash(true)
+	cors.Default().Handler(router)
+	AddRoutes(router, serverID, store, connectedUsers)
+	cors.Default().Handler(router)
 
-	// Routes
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		heartbeat(w, r, serverID)
-	})
-	router.HandleFunc("/connect", func(w http.ResponseWriter, r *http.Request) {
-		ConnectHandler(w, r, serverID, store)
-	})
-	router.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
-		ReadHandler(w, r, serverID, Cassandra.Session)
-	})
-	router.HandleFunc("/write", func(w http.ResponseWriter, r *http.Request) {
-		WriteHandler(w, r, serverID, Cassandra.Session)
-	})
-
-	// Listen Server
-	log.Print(fmt.Sprintf("Listening on port %d: \n", serverID+portShift))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", serverID+portShift), router))
+	// Start Server
+	log.Print(fmt.Sprintf("Listening on port %d. \n", serverID))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", serverID), router))
 
 }
 
 func main() {
-
-	portShift := 4000
-
+	godotenv.Load()
+	portShift := 4001 // first port number
 	// Start server threads
 	var wg sync.WaitGroup
-	for i := 1; i <= 5; i++ {
+	for i := 0; i < 3; i++ {
 		wg.Add(1)
-		go serverThread(i, portShift, &wg)
+		serverID := portShift + i
+		go proxyServer(serverID, &wg)
 	}
 	wg.Wait()
 
