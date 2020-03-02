@@ -20,6 +20,7 @@ func BuildQuery(baseURL string, queryParams ...[]string) string {
 	return base.String()
 }
 
+// JSONResponse : Basic response
 type JSONResponse struct {
 	Status string
 	Code   int

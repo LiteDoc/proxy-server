@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -72,12 +73,27 @@ func connectHandler(w http.ResponseWriter, r *http.Request, serverID int, store 
 	json.NewEncoder(w).Encode(JSONResponse{Status: "Connected", Code: 200})
 }
 
+func isOwner(clientName string, clientRegisterID string) string {
+	// create query and get response
+	var clientQuery string = BuildQuery("http://localhost:4000/readLock",
+		[]string{"name", clientName}, []string{"registerID", clientRegisterID})
+	resp, err := http.Get(clientQuery)
+	if err != nil {
+		log.Fatalln(err)
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	return string(body)
+}
+
 // ReadHandler : read
 func readHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *gocql.Session) {
 
 	log.Print(fmt.Sprintf("Read on server %d. \n", serverID))
 
-	q := cass.Query(`SELECT * from testtable`)
+	q := cass.Query(`SELECT * from registers`)
 	rows, ok := q.Iter().SliceMap()
 	if ok != nil {
 		panic(fmt.Sprintf("%s\n", ok.Error()))
@@ -109,27 +125,18 @@ func writeHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *go
 		return
 	}
 
-	err = cass.Query(`INSERT INTO testtable (id, field0, tag) VALUES (5, 'yes work', '5')`).Exec()
+	// get request body
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r.Body)
+	reqBody := buf.String()
+
+	err = cass.Query("UPDATE registers SET field0=? WHERE y_id=?", reqBody, clientRegisterID).Exec()
 	if err != nil {
 		log.Fatal(err)
+		return
 	}
-
 	json.NewEncoder(w).Encode(JSONResponse{Status: "Write Success", Code: 200})
-}
-
-func isOwner(clientName string, clientRegisterID string) string {
-	// create query and get response
-	var clientQuery string = BuildQuery("http://localhost:4000/readLock",
-		[]string{"name", clientName}, []string{"registerID", clientRegisterID})
-	resp, err := http.Get(clientQuery)
-	if err != nil {
-		log.Fatalln(err)
-		return ""
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	return string(body)
+	return
 }
 
 // lockHandler : request register lock to LE
