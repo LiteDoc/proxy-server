@@ -114,7 +114,6 @@ func writeHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *go
 	var q = r.URL.Query()
 	var clientName string = q.Get("name")
 	var clientRegisterID string = q.Get("registerID")
-	log.Printf(isOwner(clientName, clientRegisterID))
 	isClientOwner, err := strconv.ParseBool(isOwner(clientName, clientRegisterID))
 	if err != nil {
 		log.Fatalln(err)
@@ -139,12 +138,35 @@ func writeHandler(w http.ResponseWriter, r *http.Request, serverID int, cass *go
 	return
 }
 
+// readLocksHandler : return register locks status
+func readLocksHandler(w http.ResponseWriter, r *http.Request) {
+	log.Print(fmt.Sprintf("Read locks. \n"))
+
+	// create query and get response
+	var clientQuery string = "http://localhost:4000/readLocks"
+	resp, err := http.Get(clientQuery)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	// convert response back to a map and then encode and send
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	json.NewEncoder(w).Encode(result)
+}
+
 // lockHandler : request register lock to LE
 func lockHandler(w http.ResponseWriter, r *http.Request) {
 	// Get query params
 	var q = r.URL.Query()
 	var clientName string = q.Get("name")
 	var clientRegisterID string = q.Get("registerID")
+
+	log.Print(clientName)
+	log.Print(clientRegisterID)
 
 	// create query and get response
 	var clientQuery string = BuildQuery("http://localhost:4000/lock",
@@ -212,6 +234,10 @@ func AddRoutes(router *mux.Router, serverID int, store *sessions.CookieStore, co
 	router.HandleFunc("/write", func(w http.ResponseWriter, r *http.Request) {
 		enableCors(&w)
 		writeHandler(w, r, serverID, Cassandra.Session)
+	})
+	router.HandleFunc("/readLocks", func(w http.ResponseWriter, r *http.Request) {
+		enableCors(&w)
+		readLocksHandler(w, r)
 	})
 	router.HandleFunc("/lock", func(w http.ResponseWriter, r *http.Request) {
 		enableCors(&w)
